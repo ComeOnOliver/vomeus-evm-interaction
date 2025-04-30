@@ -16,9 +16,9 @@ contract VomeusReceiver is Pausable, Ownable, ReentrancyGuard {
 
     mapping(address => uint256) public BuyerNFTCounter;
     mapping(address => uint256) public RedeemedNumber;
-    mapping(address => mapping (uint256 => address)) redeemedRecord;
+    mapping(address => address) public redeemedRecord;
 
-    event PaymentReceived(address indexed payer, uint256 buyTimes, uint256 timestamp);
+    event PaymentReceived(address indexed payer, uint256 paymentAmount, uint256 timestamp);
     event Withdrawal(address indexed receiver, uint256 amount);
     event redeemEvent(address indexed user, uint256 buyNumber, address moveAddress);
 
@@ -29,19 +29,19 @@ contract VomeusReceiver is Pausable, Ownable, ReentrancyGuard {
         totalMint = 0;
     }   
 
-    function pay(uint256 buyTimes) external nonReentrant whenNotPaused{
-        require(buyTimes > 0, "Amount must be greater than zero");
-
+    function pay() external nonReentrant whenNotPaused{
+        require(BuyerNFTCounter[msg.sender] <= 1, "Already Minted");
         // Transfer USDC safely
-        usdcToken.safeTransferFrom(msg.sender, address(this), NFTPriceInUSDC * buyTimes);
-        BuyerNFTCounter[msg.sender] += buyTimes;
-        totalMint += buyTimes;
+        usdcToken.safeTransferFrom(msg.sender, address(this), NFTPriceInUSDC);
+        totalMint += 1;
+        BuyerNFTCounter[msg.sender] += 1;
+        
 
         // Emit event
-        emit PaymentReceived(msg.sender, buyTimes, block.timestamp);
+        emit PaymentReceived(msg.sender, NFTPriceInUSDC, block.timestamp);
     }
 
-    function withdraw(address to, uint256 amount) external onlyOwner nonReentrant {
+    function withdraw(address to, uint256 amount) external onlyOwner {
         require(to != address(0), "Invalid receiver address");
 
         usdcToken.safeTransfer(to, amount);
@@ -52,7 +52,7 @@ contract VomeusReceiver is Pausable, Ownable, ReentrancyGuard {
         NFTPriceInUSDC = newAmount;
     }
 
-    function ifCanRedeem()public view returns (bool) {
+    function checkCanRedeem()public view returns (bool) {
         
         uint256 redeemedCount = RedeemedNumber[msg.sender];
         require(redeemedCount < BuyerNFTCounter[msg.sender], "Already Redeemed All");
@@ -61,23 +61,19 @@ contract VomeusReceiver is Pausable, Ownable, ReentrancyGuard {
 
     }
 
-    function redeem(address movementAddress) external whenNotPaused {
+    function redeem(address movementAddress) external {
         require(BuyerNFTCounter[msg.sender] > 0, "Not Available to Redeem");
-        require(ifCanRedeem() == true, "Cannot Redeem");
+        require(checkCanRedeem() == true, "Cannot Redeem");
 
         uint256 redeemCount = RedeemedNumber[msg.sender];
         RedeemedNumber[msg.sender] = RedeemedNumber[msg.sender]+1;
 
-        redeemedRecord[msg.sender][redeemCount] = movementAddress;
+        redeemedRecord[msg.sender] = movementAddress;
         emit redeemEvent(msg.sender, redeemCount, movementAddress);
     }
 
     function getPaymentCount(address user) external view returns (uint256) {
         return BuyerNFTCounter[user];
-    }
-
-    function setAllowance(uint256 buyTimes) external onlyOwner {
-        usdcToken.approve(address(this), NFTPriceInUSDC * buyTimes);
     }
 
     function pause() public onlyOwner {
